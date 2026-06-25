@@ -9,6 +9,8 @@ import { AdminProviders } from "@/components/admin/AdminProviders";
 import { AdminCurrencySwitch } from "@/components/admin/AdminCurrencySwitch";
 import { adminFrame, adminMain } from "@/components/admin/admin-styles";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboardLayout({
   children,
 }: {

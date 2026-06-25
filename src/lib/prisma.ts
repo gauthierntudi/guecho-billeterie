@@ -20,16 +20,22 @@ function withDatabaseTimeouts(url: string | undefined) {
   return result;
 }
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createPrismaClient() {
+  const url = withDatabaseTimeouts(process.env.DATABASE_URL);
+
+  return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-    datasources: {
-      db: {
-        url: withDatabaseTimeouts(process.env.DATABASE_URL),
-      },
-    },
+    ...(url
+      ? {
+          datasources: {
+            db: { url },
+          },
+        }
+      : {}),
   });
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
