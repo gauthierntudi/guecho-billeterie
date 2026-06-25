@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum TicketCategory {
+  SPECTACLE
+  STREAMING
+}
+
+enum TicketTier {
+  STANDARD
+  VIP
+  VVIP
+  STREAMING_ACCESS
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum TicketStatus {
+  VALID
+  USED
+  CANCELLED
+}
+
+model Event {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  title       String
+  subtitle    String?
+  description String       @db.Text
+  venue       String
+  city        String       @default("Kinshasa")
+  startsAt    DateTime
+  endsAt      DateTime?
+  coverImage  String?
+  isActive    Boolean      @default(true)
+  ticketTypes TicketType[]
+  orders      Order[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model TicketType {
+  id          String         @id @default(cuid())
+  eventId     String
+  event       Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  category    TicketCategory
+  tier        TicketTier
+  name        String
+  description String?
+  price       Int
+  priceUsd    Int            @default(0)
+  currency    String         @default("CDF")
+  quantity    Int
+  soldCount   Int            @default(0)
+  isActive    Boolean        @default(true)
+  orderItems  OrderItem[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([eventId, tier])
+  @@index([eventId])
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  eventId               String
+  event                 Event       @relation(fields: [eventId], references: [id])
+  orderNumber           String      @unique
+  customerName          String
+  customerEmail         String
+  customerPhone         String
+  paymentPhone          String?
+  status                OrderStatus @default(PENDING)
+  totalAmount           Int
+  currency              String      @default("CDF")
+  flexpaieTransactionId String?
+  flexpaieReference     String?
+  items                 OrderItem[]
+  payment               Payment?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@index([eventId])
+  @@index([customerEmail])
+  @@index([customerPhone])
+}
+
+model OrderItem {
+  id           String     @id @default(cuid())
+  orderId      String
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketTypeId String
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+  quantity     Int
+  unitPrice    Int
+  subtotal     Int
+  tickets      Ticket[]
+  createdAt    DateTime   @default(now())
+
+  @@index([orderId])
+}
+
+model Ticket {
+  id          String       @id @default(cuid())
+  orderItemId String
+  orderItem   OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  ticketCode  String       @unique
+  status      TicketStatus @default(VALID)
+  attendeeName  String?
+  attendeeEmail String?
+  issuedAt    DateTime     @default(now())
+  usedAt      DateTime?
+
+  @@index([orderItemId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String        @unique
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount      Int
+  currency    String        @default("CDF")
+  status      PaymentStatus @default(PENDING)
+  provider    String        @default("FLEXPAIE")
+  providerRef String?
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
