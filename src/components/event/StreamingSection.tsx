@@ -125,7 +125,7 @@ export function StreamingSection() {
                   className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${feature.accent} opacity-80 transition group-hover:opacity-100`}
                 />
                 <div className="relative">
-                  {feature.highlight ? (
+                  {"highlight" in feature && feature.highlight ? (
                     <span className="mb-4 block font-mono text-3xl tracking-tight text-white/90">
                       {feature.highlight}
                     </span>
