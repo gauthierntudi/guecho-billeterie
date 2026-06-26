@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Anton, Geist, Geist_Mono } from "next/font/google";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
+import { rootSiteMetadata } from "@/lib/site-metadata";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,15 +20,7 @@ const anton = Anton({
   weight: "400",
 });
 
-export const metadata: Metadata = {
-  title: "Guecho Rocambole — Billetterie",
-  description:
-    "Billetterie officielle Guecho Rocambole. Billets spectacle (Standard, VIP, VVIP) et streaming.",
-  icons: {
-    icon: "/img/logo-guecho.png",
-    apple: "/img/logo-guecho.png",
-  },
-};
+export const metadata: Metadata = rootSiteMetadata;
 
 export default function RootLayout({
   children,

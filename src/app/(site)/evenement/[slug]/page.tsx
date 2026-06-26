@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getEventBySlug } from "@/lib/ticketing";
+import { buildSiteMetadata } from "@/lib/site-metadata";
 import { EventHero } from "@/components/event/EventHero";
 import { EventPageBackground } from "@/components/event/EventPageBackground";
 import { TicketSelector } from "@/components/ticketing/TicketSelector";
@@ -21,10 +22,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Événement introuvable" };
   }
 
-  return {
+  return buildSiteMetadata({
     title: `${event.title} — Billetterie`,
     description: event.description,
-  };
+    path: `/evenement/${slug}`,
+  });
 }
 
 export default async function EventPage({ params }: PageProps) {

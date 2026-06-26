@@ -3,12 +3,14 @@ import { EventPageBackground } from "@/components/event/EventPageBackground";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { TicketLookupForm } from "@/components/ticketing/TicketLookupForm";
+import { buildSiteMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "Mes billets — Guecho",
+export const metadata: Metadata = buildSiteMetadata({
+  title: "Mes billets — Guecho Rocambole",
   description:
     "Retrouvez vos billets avec votre téléphone de contact ou votre e-mail de paiement.",
-};
+  path: "/mes-billets",
+});
 
 export default function MesBilletsPage() {
   return (
