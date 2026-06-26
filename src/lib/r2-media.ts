@@ -42,7 +42,7 @@ export async function getHeroVideoUrl(): Promise<string | null> {
 
   try {
     const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    return await getSignedUrl(client, command, { expiresIn: 60 * 60 * 6 });
+    return await getSignedUrl(client, command, { expiresIn: 60 * 60 * 24 });
   } catch {
     return null;
   }

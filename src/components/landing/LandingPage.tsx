@@ -17,7 +17,8 @@ const PRELOAD_IMAGES = [
 ];
 
 type LandingPageProps = {
-  heroVideoUrl: string | null;
+  /** URL publique optionnelle ; sinon chargée via /api/media/hero-video */
+  heroVideoUrl?: string | null;
 };
 
 function preloadImage(src: string) {
@@ -39,11 +40,33 @@ function preloadVideo(src: string) {
   });
 }
 
-export function LandingPage({ heroVideoUrl }: LandingPageProps) {
+export function LandingPage({ heroVideoUrl: initialHeroVideoUrl = null }: LandingPageProps) {
+  const [heroVideoUrl, setHeroVideoUrl] = useState<string | null>(
+    initialHeroVideoUrl,
+  );
   const [assetsReady, setAssetsReady] = useState(false);
   const [sliderReady, setSliderReady] = useState(false);
 
   useSiteLoaderReady(assetsReady && sliderReady);
+
+  useEffect(() => {
+    if (initialHeroVideoUrl) return;
+
+    let cancelled = false;
+
+    void fetch("/api/media/hero-video", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { url?: string | null } | null) => {
+        if (!cancelled && data?.url) {
+          setHeroVideoUrl(data.url);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialHeroVideoUrl]);
 
   useEffect(() => {
     let cancelled = false;
