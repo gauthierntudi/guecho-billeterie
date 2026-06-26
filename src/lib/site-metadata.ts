@@ -10,8 +10,6 @@ export const SITE_OG_IMAGE = {
   alt: "Guecho Rocambole — Billetterie officielle",
 } as const;
 
-export const SITE_ICON = "/img/icon.jpg";
-
 export function getSiteUrl() {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (configured) {
@@ -45,10 +43,6 @@ export function buildSiteMetadata({
     metadataBase: getMetadataBase(),
     title: pageTitle,
     description: pageDescription,
-    icons: {
-      icon: SITE_ICON,
-      apple: SITE_ICON,
-    },
     openGraph: {
       type: "website",
       locale: "fr_FR",
