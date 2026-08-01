@@ -454,7 +454,7 @@ export async function grantStreamAccessByPhone(
 
   const eventSlug = slug ?? DEFAULT_EVENT_SLUG;
 
-  const ticket = await prisma.ticket.findFirst({
+  const tickets = await prisma.ticket.findMany({
     where: {
       status: TicketStatus.VALID,
       orderItem: {
@@ -469,17 +469,64 @@ export async function grantStreamAccessByPhone(
       },
     },
     include: ticketAccessInclude,
-    orderBy: { issuedAt: "desc" },
+    // Oldest first: fill ticket #1 (2 slots), then #2, etc.
+    orderBy: { issuedAt: "asc" },
   });
 
-  if (!ticket) {
+  if (!tickets.length) {
     return {
       success: false,
       error: "Aucun billet streaming trouvé pour ce numéro",
     };
   }
 
-  return grantStreamAccessByTicketCode(ticket.ticketCode, eventSlug, sessionId);
+  // Reconnect to the same ticket/session when possible.
+  if (sessionId) {
+    const existingSession = await prisma.streamViewerSession.findFirst({
+      where: { id: sessionId },
+    });
+    if (
+      existingSession &&
+      tickets.some((ticket) => ticket.ticketCode === existingSession.ticketCode)
+    ) {
+      return grantStreamAccessByTicketCode(
+        existingSession.ticketCode,
+        eventSlug,
+        sessionId,
+      );
+    }
+  }
+
+  let lastLimitError: string | null = null;
+  let lastAccessError: string | null = null;
+
+  for (const ticket of tickets) {
+    const access = buildAccessFromTicket(ticket, eventSlug);
+    if (!access.success) {
+      lastAccessError = access.error;
+      continue;
+    }
+
+    // Waiting room: no viewer slot yet — any valid ticket is enough.
+    if (!access.isLive || !access.playbackUrl) {
+      return { ...access, sessionId: null };
+    }
+
+    const claim = await claimStreamViewerSession(ticket.ticketCode, null);
+    if (claim.success) {
+      return { ...access, sessionId: claim.sessionId };
+    }
+
+    lastLimitError = claim.error;
+  }
+
+  return {
+    success: false,
+    error:
+      lastLimitError ??
+      lastAccessError ??
+      "Tous les billets streaming de ce numéro ont atteint la limite de 2 connexions simultanées.",
+  };
 }
 
 export async function grantStreamAccess(input: {

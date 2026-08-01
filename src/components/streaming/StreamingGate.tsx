@@ -394,7 +394,8 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
         <p className="mt-4 text-sm leading-relaxed text-white/55">
           Entrez le code de votre billet Access Streaming ou le numéro de
           téléphone associé à la commande pour regarder {eventTitle}.{" "}
-          Maximum 2 appareils en même temps.
+          2 appareils par billet — si plusieurs billets sont liés au même
+          numéro, les places se cumulent automatiquement.
         </p>
       </div>
 
