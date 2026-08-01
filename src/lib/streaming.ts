@@ -249,7 +249,7 @@ export type StreamAccessResult =
 
 export const MAX_STREAM_SESSIONS_PER_TICKET = 2;
 /** Session stays active if heartbeaten within this window. */
-export const STREAM_SESSION_TTL_MS = 90_000;
+export const STREAM_SESSION_TTL_MS = 120_000;
 
 function staleSessionCutoff(now = new Date()) {
   return new Date(now.getTime() - STREAM_SESSION_TTL_MS);
@@ -272,7 +272,7 @@ export async function claimStreamViewerSession(
   const staleBefore = staleSessionCutoff(now);
 
   try {
-    // Reconnect existing session if still valid for this ticket.
+    // Reconnect existing session if still present for this ticket.
     if (sessionId) {
       const existing = await prisma.streamViewerSession.findFirst({
         where: { id: sessionId, ticketCode: code },
@@ -286,22 +286,15 @@ export async function claimStreamViewerSession(
       }
     }
 
+    // Free expired seats before allocating (single ticket scope).
+    await prisma.streamViewerSession.deleteMany({
+      where: {
+        ticketCode: code,
+        lastSeenAt: { lt: staleBefore },
+      },
+    });
+
     for (let slot = 1; slot <= MAX_STREAM_SESSIONS_PER_TICKET; slot += 1) {
-      const occupied = await prisma.streamViewerSession.findUnique({
-        where: { ticketCode_slot: { ticketCode: code, slot } },
-      });
-
-      const canTake = !occupied || occupied.lastSeenAt < staleBefore;
-      if (!canTake) continue;
-
-      if (occupied) {
-        try {
-          await prisma.streamViewerSession.delete({ where: { id: occupied.id } });
-        } catch {
-          // Already removed by another request.
-        }
-      }
-
       try {
         const created = await prisma.streamViewerSession.create({
           data: {
@@ -312,14 +305,14 @@ export async function claimStreamViewerSession(
         });
         return { success: true, sessionId: created.id };
       } catch {
-        // Unique race on this slot — try the next one.
+        // Slot taken (unique) — try the next one.
       }
     }
 
     return {
       success: false,
       error:
-        "Limite atteinte : 2 connexions simultanées maximum pour ce billet. Fermez un autre appareil ou réessayez dans 1 à 2 minutes.",
+        "Limite atteinte : 2 connexions simultanées maximum pour ce billet. Fermez un autre appareil via « Changer d’accès » ou réessayez dans 2 minutes.",
     };
   } catch {
     return {
@@ -463,14 +456,11 @@ export async function grantStreamAccessByTicketCode(
   const access = buildAccessFromTicket(ticket, eventSlug);
   if (!access.success) return access;
 
-  // Only reserve a viewer slot when playback is granted.
-  if (access.isLive && access.playbackUrl) {
-    const claim = await claimStreamViewerSession(code, sessionId);
-    if (!claim.success) return claim;
-    return { ...access, sessionId: claim.sessionId };
-  }
+  // Reserve a seat immediately (waiting room + live) so limits apply early.
+  const claim = await claimStreamViewerSession(code, sessionId);
+  if (!claim.success) return claim;
 
-  return { ...access, sessionId: null };
+  return { ...access, sessionId: claim.sessionId };
 }
 
 export async function grantStreamAccessByPhone(
@@ -536,11 +526,6 @@ export async function grantStreamAccessByPhone(
     if (!access.success) {
       lastAccessError = access.error;
       continue;
-    }
-
-    // Waiting room: no viewer slot yet — any valid ticket is enough.
-    if (!access.isLive || !access.playbackUrl) {
-      return { ...access, sessionId: null };
     }
 
     const claim = await claimStreamViewerSession(ticket.ticketCode, null);

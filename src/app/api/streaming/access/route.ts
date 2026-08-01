@@ -84,24 +84,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error }, { status: 403 });
     }
 
-    // Waiting room: ticket OK but not live yet — no cookie/slot playback.
-    if (!result.isLive || !result.playbackUrl || !result.sessionId) {
+    if (!result.sessionId) {
       await clearStreamAccessCookie();
       return NextResponse.json(
-        {
-          isLive: result.isLive,
-          title: result.title,
-          eventTitle: result.eventTitle,
-          ticketCode: result.ticketCode,
-          attendeeName: result.attendeeName,
-          sessionId: null,
-          hasPlayback: false,
-        },
-        { headers: { "Cache-Control": "no-store" } },
+        { error: "Impossible de réserver une place de visionnage" },
+        { status: 403 },
       );
     }
 
-    // Keep session warm and mint httpOnly access cookie (no raw playback URL).
+    // Cookie + heartbeat even in waiting room (seat is reserved).
     await heartbeatStreamViewerSession(result.sessionId, result.ticketCode);
     const token = createStreamAccessToken({
       sessionId: result.sessionId,
@@ -109,15 +100,17 @@ export async function POST(request: Request) {
     });
     await setStreamAccessCookie(token);
 
+    const hasPlayback = Boolean(result.isLive && result.playbackUrl);
+
     return NextResponse.json(
       {
-        isLive: true,
+        isLive: result.isLive,
         title: result.title,
         eventTitle: result.eventTitle,
         ticketCode: result.ticketCode,
         attendeeName: result.attendeeName,
         sessionId: result.sessionId,
-        hasPlayback: true,
+        hasPlayback,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

@@ -28,6 +28,8 @@ type AccessPayload = {
   ticketCode: string;
   attendeeName: string | null;
   sessionId: string | null;
+  /** Kept so restore reuses phone failover across tickets. */
+  phone?: string | null;
 };
 
 const ACCESS_STORAGE_KEY = "guecho-stream-access";
@@ -69,14 +71,17 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
       const raw = sessionStorage.getItem(ACCESS_STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as AccessPayload;
-        if (saved?.ticketCode) {
-          // Re-validate so concurrent session slots are claimed correctly.
+        if (saved?.sessionId && (saved.phone || saved.ticketCode)) {
+          // Re-validate so concurrent session slots stay enforced.
+          // Prefer phone so multi-ticket failover still works after refresh.
           void requestAccess({
-            ticketCode: saved.ticketCode,
+            phone: saved.phone ?? undefined,
+            ticketCode: saved.phone ? undefined : saved.ticketCode,
             sessionId: saved.sessionId,
           });
           return;
         }
+        sessionStorage.removeItem(ACCESS_STORAGE_KEY);
       }
     } catch {
       // ignore
@@ -132,10 +137,11 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status?.isLive]);
 
-  // Keep viewer session alive while watching.
+  // Keep viewer session alive while waiting or watching.
+  // Do NOT release on pagehide — mobile Safari fires it on tab switch / sleep
+  // and that was freeing seats for extra devices. Seats expire via TTL only.
   useEffect(() => {
     if (!access?.sessionId || !access.ticketCode) return;
-    if (!access.isLive || !access.hasPlayback) return;
 
     let cancelled = false;
 
@@ -163,28 +169,11 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
     void beat();
     const timer = window.setInterval(beat, HEARTBEAT_MS);
 
-    function release() {
-      if (!access?.sessionId) return;
-      const payload = JSON.stringify({
-        sessionId: access.sessionId,
-        ticketCode: access.ticketCode,
-      });
-      void fetch("/api/streaming/session", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: payload,
-        keepalive: true,
-      }).catch(() => undefined);
-    }
-
-    window.addEventListener("pagehide", release);
-
     return () => {
       cancelled = true;
       window.clearInterval(timer);
-      window.removeEventListener("pagehide", release);
     };
-  }, [access?.sessionId, access?.ticketCode, access?.isLive, access?.hasPlayback]);
+  }, [access?.sessionId, access?.ticketCode]);
 
   async function requestAccess(payload: {
     ticketCode?: string;
@@ -200,17 +189,19 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
     );
 
     let existingSessionId = payload.sessionId ?? null;
-    if (!existingSessionId) {
-      try {
-        const raw = sessionStorage.getItem(ACCESS_STORAGE_KEY);
-        if (raw) {
-          const saved = JSON.parse(raw) as AccessPayload;
-          existingSessionId = saved.sessionId ?? null;
-        }
-      } catch {
-        // ignore
+    let savedPhone: string | null = null;
+    try {
+      const raw = sessionStorage.getItem(ACCESS_STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as AccessPayload;
+        if (!existingSessionId) existingSessionId = saved.sessionId ?? null;
+        savedPhone = saved.phone ?? null;
       }
+    } catch {
+      // ignore
     }
+
+    const phoneUsed = payload.phone?.trim() || savedPhone || null;
 
     try {
       const response = await fetch("/api/streaming/access", {
@@ -231,10 +222,20 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
         sessionStorage.removeItem(ACCESS_STORAGE_KEY);
         return;
       }
-      setAccess(data);
+      if (!data.sessionId) {
+        setError("Impossible de réserver une place de visionnage");
+        setAccess(null);
+        sessionStorage.removeItem(ACCESS_STORAGE_KEY);
+        return;
+      }
+      const nextAccess: AccessPayload = {
+        ...data,
+        phone: phoneUsed,
+      };
+      setAccess(nextAccess);
       if (data.ticketCode) setTicketCode(data.ticketCode);
       try {
-        sessionStorage.setItem(ACCESS_STORAGE_KEY, JSON.stringify(data));
+        sessionStorage.setItem(ACCESS_STORAGE_KEY, JSON.stringify(nextAccess));
       } catch {
         // ignore quota / private mode
       }
@@ -359,8 +360,9 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
           </p>
           <p className="mx-auto mt-3 max-w-sm text-sm text-white/55">
             Billet {access.ticketCode}
-            {access.attendeeName ? ` · ${access.attendeeName}` : ""}. Le player
-            s’ouvrira automatiquement dès le démarrage du live.
+            {access.attendeeName ? ` · ${access.attendeeName}` : ""}. Place
+            réservée (2 max par billet). Le player s’ouvrira automatiquement
+            dès le démarrage du live.
           </p>
           <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-black/30 px-4 py-2 text-[10px] uppercase tracking-[0.22em] text-amber-100/60">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-300" />
