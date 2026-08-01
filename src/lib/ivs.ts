@@ -2,9 +2,11 @@ import {
   CreateChannelCommand,
   GetStreamCommand,
   IvsClient,
+  UpdateChannelCommand,
   ChannelLatencyMode,
   ChannelType,
 } from "@aws-sdk/client-ivs";
+import { isIvsPlaybackAuthConfigured } from "@/lib/ivs-playback-token";
 
 function getAwsCredentials() {
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim();
@@ -45,6 +47,7 @@ export type CreatedIvsChannel = {
   playbackUrl: string;
   streamKeyArn: string;
   streamKeyValue: string;
+  authorized: boolean;
 };
 
 export async function createIvsChannel(
@@ -55,12 +58,14 @@ export async function createIvsChannel(
     throw new Error("Credentials AWS IVS manquants");
   }
 
+  const authorized = isIvsPlaybackAuthConfigured();
+
   const response = await client.send(
     new CreateChannelCommand({
       name: name.slice(0, 128),
       latencyMode: ChannelLatencyMode.LowLatency,
       type: ChannelType.StandardChannelType,
-      authorized: false,
+      authorized,
     }),
   );
 
@@ -85,7 +90,25 @@ export async function createIvsChannel(
     playbackUrl: channel.playbackUrl,
     streamKeyArn: streamKey.arn,
     streamKeyValue: streamKey.value,
+    authorized: Boolean(channel.authorized),
   };
+}
+
+export async function setIvsChannelAuthorized(
+  channelArn: string,
+  authorized: boolean,
+) {
+  const client = getIvsClient();
+  if (!client) {
+    throw new Error("Credentials AWS IVS manquants");
+  }
+
+  await client.send(
+    new UpdateChannelCommand({
+      arn: channelArn,
+      authorized,
+    }),
+  );
 }
 
 export type IvsStreamLiveState = {

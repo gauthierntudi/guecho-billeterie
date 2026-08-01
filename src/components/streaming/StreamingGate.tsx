@@ -9,7 +9,7 @@ import {
   MonitorPlay,
   Ticket,
 } from "lucide-react";
-import { IvsPlayer } from "@/components/streaming/IvsPlayer";
+import { SecureLivePlayer } from "@/components/streaming/SecureLivePlayer";
 import { TelInput } from "@/components/ticketing/TelInput";
 
 type StreamStatus = {
@@ -22,7 +22,7 @@ type StreamStatus = {
 
 type AccessPayload = {
   isLive: boolean;
-  playbackUrl: string | null;
+  hasPlayback?: boolean;
   title: string | null;
   eventTitle: string;
   ticketCode: string;
@@ -135,7 +135,7 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
   // Keep viewer session alive while watching.
   useEffect(() => {
     if (!access?.sessionId || !access.ticketCode) return;
-    if (!access.isLive || !access.playbackUrl) return;
+    if (!access.isLive || !access.hasPlayback) return;
 
     let cancelled = false;
 
@@ -184,7 +184,7 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
       window.clearInterval(timer);
       window.removeEventListener("pagehide", release);
     };
-  }, [access?.sessionId, access?.ticketCode, access?.isLive, access?.playbackUrl]);
+  }, [access?.sessionId, access?.ticketCode, access?.isLive, access?.hasPlayback]);
 
   async function requestAccess(payload: {
     ticketCode?: string;
@@ -309,7 +309,7 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
   const isLive = Boolean(status?.isLive);
   const eventTitle = status?.eventTitle ?? "le spectacle";
 
-  if (access?.isLive && access.playbackUrl) {
+  if (access?.isLive && access.hasPlayback && access.sessionId) {
     return (
       <div className="-mx-4 space-y-4 sm:mx-0 sm:space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-3 px-4 sm:px-0">
@@ -327,7 +327,7 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
           </div>
           <button
             type="button"
-            onClick={resetAccess}
+            onClick={() => void resetAccess()}
             className="rounded-full border border-amber-400/25 px-4 py-2 text-[10px] uppercase tracking-widest text-amber-100/70 transition hover:border-amber-300/50 hover:text-amber-100"
           >
             Changer d&apos;accès
@@ -335,10 +335,14 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
         </div>
 
         <div className="relative aspect-video overflow-hidden bg-black shadow-[0_0_80px_-20px_rgba(251,191,36,0.45)] sm:rounded-2xl sm:border sm:border-amber-400/20">
-          <IvsPlayer
-            playbackUrl={access.playbackUrl}
+          <SecureLivePlayer
             title={access.title ?? access.eventTitle}
             className="absolute inset-0"
+            onSessionLost={(message) => {
+              setError(message);
+              setAccess(null);
+              sessionStorage.removeItem(ACCESS_STORAGE_KEY);
+            }}
           />
         </div>
       </div>
@@ -364,7 +368,7 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
           </div>
           <button
             type="button"
-            onClick={resetAccess}
+            onClick={() => void resetAccess()}
             className="mt-6 block w-full rounded-full border border-amber-400/20 px-4 py-3 text-[10px] uppercase tracking-widest text-amber-100/60 transition hover:border-amber-300/40 hover:text-amber-100"
           >
             Changer d&apos;accès

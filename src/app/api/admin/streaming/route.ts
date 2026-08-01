@@ -4,6 +4,7 @@ import { requireAdminEvent } from "@/lib/admin";
 import {
   getAdminStreamView,
   provisionIvsChannel,
+  enableIvsPlaybackAuthorization,
   setStreamLive,
   updateStreamTitle,
 } from "@/lib/streaming";
@@ -73,6 +74,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Titre requis" }, { status: 400 });
       }
       const result = await updateStreamTitle(event.id, body.title);
+      return NextResponse.json(result);
+    }
+
+    if (action === "enable-playback-auth") {
+      const result = await enableIvsPlaybackAuthorization(event.id);
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
       return NextResponse.json(result);
     }
 

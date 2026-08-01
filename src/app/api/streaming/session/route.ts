@@ -4,6 +4,7 @@ import {
   heartbeatStreamViewerSession,
   releaseStreamViewerSession,
 } from "@/lib/streaming";
+import { clearStreamAccessCookie } from "@/lib/stream-security";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,7 @@ export async function DELETE(request: Request) {
       parsed.data.sessionId,
       parsed.data.ticketCode,
     );
+    await clearStreamAccessCookie();
 
     return NextResponse.json(
       { ok: true },

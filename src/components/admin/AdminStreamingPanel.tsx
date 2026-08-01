@@ -123,7 +123,9 @@ export function AdminStreamingPanel() {
             ? "Streaming public activé."
             : action === "end-live"
               ? "Streaming public désactivé."
-              : "Titre mis à jour.",
+              : action === "enable-playback-auth"
+                ? "Auth lecture IVS activée sur le canal (tokens requis)."
+                : "Titre mis à jour.",
       );
     } catch {
       setError("Connexion impossible");
@@ -279,6 +281,18 @@ export function AdminStreamingPanel() {
               className="inline-flex items-center gap-2 rounded-full bg-red-600 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-red-500 disabled:opacity-40"
             >
               Passer en live public
+            </button>
+          ) : null}
+
+          {stream.configured ? (
+            <button
+              type="button"
+              disabled={busy || !stream.channelArn}
+              onClick={() => void runAction("enable-playback-auth")}
+              className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-amber-900 transition hover:bg-amber-100 disabled:opacity-40"
+              title="Requiert IVS_PLAYBACK_PRIVATE_KEY + clé publique importée dans IVS"
+            >
+              Activer auth lecture IVS
             </button>
           ) : null}
 

@@ -5,7 +5,9 @@ import {
   createIvsChannel,
   getIvsStreamState,
   isIvsConfigured,
+  setIvsChannelAuthorized,
 } from "@/lib/ivs";
+import { isIvsPlaybackAuthConfigured } from "@/lib/ivs-playback-token";
 import { getPhoneLookupVariants } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { isStreamingTicket } from "@/types/ticketing";
@@ -146,6 +148,26 @@ export async function provisionIvsChannel(eventId: string) {
     },
   });
 
+  return { stream: await getAdminStreamView(eventId) };
+}
+
+export async function enableIvsPlaybackAuthorization(eventId: string) {
+  if (!isIvsConfigured()) {
+    return { error: "Credentials AWS manquants" };
+  }
+  if (!isIvsPlaybackAuthConfigured()) {
+    return {
+      error:
+        "IVS_PLAYBACK_PRIVATE_KEY manquant. Générez une clé ECDSA P-384 et importez la clé publique dans IVS.",
+    };
+  }
+
+  const config = await getOrCreateStreamConfigForEvent(eventId);
+  if (!config.channelArn) {
+    return { error: "Créez d'abord le canal IVS" };
+  }
+
+  await setIvsChannelAuthorized(config.channelArn, true);
   return { stream: await getAdminStreamView(eventId) };
 }
 

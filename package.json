@@ -12,6 +12,8 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "stream:ivs-keys": "node scripts/generate-ivs-playback-keys.mjs",
+    "stream:ivs-setup": "node --env-file=.env scripts/setup-ivs-playback-auth.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -23,6 +25,7 @@
     "amazon-ivs-player": "^1.54.1",
     "clsx": "^2.1.1",
     "gsap": "^3.15.0",
+    "jose": "^6.2.7",
     "libphonenumber-js": "^1.13.7",
     "lucide-react": "^1.21.0",
     "nanoid": "^5.1.15",

@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { grantStreamAccess } from "@/lib/streaming";
+import { grantStreamAccess, heartbeatStreamViewerSession } from "@/lib/streaming";
+import {
+  clearStreamAccessCookie,
+  createStreamAccessToken,
+  getRequestIp,
+  rateLimit,
+  setStreamAccessCookie,
+} from "@/lib/stream-security";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +25,22 @@ const accessSchema = z
 
 export async function POST(request: Request) {
   try {
+    const ip = getRequestIp(request);
+    const ipLimit = rateLimit({
+      key: `stream-access:ip:${ip}`,
+      limit: 20,
+      windowMs: 60_000,
+    });
+    if (!ipLimit.ok) {
+      return NextResponse.json(
+        { error: `Trop de tentatives. Réessayez dans ${ipLimit.retryAfterSec}s.` },
+        {
+          status: 429,
+          headers: { "Retry-After": String(ipLimit.retryAfterSec) },
+        },
+      );
+    }
+
     const body = await request.json();
     const parsed = accessSchema.safeParse(body);
 
@@ -25,6 +48,27 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Code billet ou numéro invalide" },
         { status: 400 },
+      );
+    }
+
+    const identityKey = (
+      parsed.data.ticketCode?.trim().toUpperCase() ||
+      parsed.data.phone?.trim() ||
+      "unknown"
+    ).slice(0, 64);
+
+    const idLimit = rateLimit({
+      key: `stream-access:id:${identityKey}`,
+      limit: 8,
+      windowMs: 60_000,
+    });
+    if (!idLimit.ok) {
+      return NextResponse.json(
+        { error: `Trop de tentatives. Réessayez dans ${idLimit.retryAfterSec}s.` },
+        {
+          status: 429,
+          headers: { "Retry-After": String(idLimit.retryAfterSec) },
+        },
       );
     }
 
@@ -36,18 +80,44 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
+      await clearStreamAccessCookie();
       return NextResponse.json({ error: result.error }, { status: 403 });
     }
 
+    // Waiting room: ticket OK but not live yet — no cookie/slot playback.
+    if (!result.isLive || !result.playbackUrl || !result.sessionId) {
+      await clearStreamAccessCookie();
+      return NextResponse.json(
+        {
+          isLive: result.isLive,
+          title: result.title,
+          eventTitle: result.eventTitle,
+          ticketCode: result.ticketCode,
+          attendeeName: result.attendeeName,
+          sessionId: null,
+          hasPlayback: false,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    // Keep session warm and mint httpOnly access cookie (no raw playback URL).
+    await heartbeatStreamViewerSession(result.sessionId, result.ticketCode);
+    const token = createStreamAccessToken({
+      sessionId: result.sessionId,
+      ticketCode: result.ticketCode,
+    });
+    await setStreamAccessCookie(token);
+
     return NextResponse.json(
       {
-        isLive: result.isLive,
-        playbackUrl: result.playbackUrl,
+        isLive: true,
         title: result.title,
         eventTitle: result.eventTitle,
         ticketCode: result.ticketCode,
         attendeeName: result.attendeeName,
         sessionId: result.sessionId,
+        hasPlayback: true,
       },
       { headers: { "Cache-Control": "no-store" } },
     );
