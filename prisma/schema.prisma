@@ -75,13 +75,16 @@ model StreamConfig {
   updatedAt      DateTime @updatedAt
 }
 
-/// Active viewers for a streaming ticket (max 2 concurrent).
+/// Active viewers for a streaming ticket (max 2 concurrent via unique slots).
 model StreamViewerSession {
   id         String   @id @default(cuid())
   ticketCode String
+  /// Fixed seat 1 or 2 — enforces max 2 sessions per ticket at DB level.
+  slot       Int
   lastSeenAt DateTime @default(now())
   createdAt  DateTime @default(now())
 
+  @@unique([ticketCode, slot])
   @@index([ticketCode, lastSeenAt])
   @@index([lastSeenAt])
 }

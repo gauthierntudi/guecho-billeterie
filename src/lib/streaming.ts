@@ -233,6 +233,10 @@ function staleSessionCutoff(now = new Date()) {
   return new Date(now.getTime() - STREAM_SESSION_TTL_MS);
 }
 
+/**
+ * Claims one of two fixed slots per ticket. The unique (ticketCode, slot)
+ * constraint enforces the limit even when Neon pooler races bypass advisory locks.
+ */
 export async function claimStreamViewerSession(
   ticketCode: string,
   sessionId?: string | null,
@@ -246,50 +250,55 @@ export async function claimStreamViewerSession(
   const staleBefore = staleSessionCutoff(now);
 
   try {
-    return await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`stream:${code}`}))`;
+    // Reconnect existing session if still valid for this ticket.
+    if (sessionId) {
+      const existing = await prisma.streamViewerSession.findFirst({
+        where: { id: sessionId, ticketCode: code },
+      });
+      if (existing) {
+        await prisma.streamViewerSession.update({
+          where: { id: existing.id },
+          data: { lastSeenAt: now },
+        });
+        return { success: true, sessionId: existing.id };
+      }
+    }
 
-      await tx.streamViewerSession.deleteMany({
-        where: { lastSeenAt: { lt: staleBefore } },
+    for (let slot = 1; slot <= MAX_STREAM_SESSIONS_PER_TICKET; slot += 1) {
+      const occupied = await prisma.streamViewerSession.findUnique({
+        where: { ticketCode_slot: { ticketCode: code, slot } },
       });
 
-      if (sessionId) {
-        const existing = await tx.streamViewerSession.findFirst({
-          where: { id: sessionId, ticketCode: code },
-        });
-        if (existing) {
-          await tx.streamViewerSession.update({
-            where: { id: existing.id },
-            data: { lastSeenAt: now },
-          });
-          return { success: true as const, sessionId: existing.id };
+      const canTake = !occupied || occupied.lastSeenAt < staleBefore;
+      if (!canTake) continue;
+
+      if (occupied) {
+        try {
+          await prisma.streamViewerSession.delete({ where: { id: occupied.id } });
+        } catch {
+          // Already removed by another request.
         }
       }
 
-      const activeCount = await tx.streamViewerSession.count({
-        where: {
-          ticketCode: code,
-          lastSeenAt: { gte: staleBefore },
-        },
-      });
-
-      if (activeCount >= MAX_STREAM_SESSIONS_PER_TICKET) {
-        return {
-          success: false as const,
-          error:
-            "Limite atteinte : 2 connexions simultanées maximum pour ce billet. Fermez un autre appareil ou réessayez dans 1 à 2 minutes.",
-        };
+      try {
+        const created = await prisma.streamViewerSession.create({
+          data: {
+            ticketCode: code,
+            slot,
+            lastSeenAt: now,
+          },
+        });
+        return { success: true, sessionId: created.id };
+      } catch {
+        // Unique race on this slot — try the next one.
       }
+    }
 
-      const created = await tx.streamViewerSession.create({
-        data: {
-          ticketCode: code,
-          lastSeenAt: now,
-        },
-      });
-
-      return { success: true as const, sessionId: created.id };
-    });
+    return {
+      success: false,
+      error:
+        "Limite atteinte : 2 connexions simultanées maximum pour ce billet. Fermez un autre appareil ou réessayez dans 1 à 2 minutes.",
+    };
   } catch {
     return {
       success: false,
