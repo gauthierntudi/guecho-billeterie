@@ -20,11 +20,15 @@ import {
   Play,
   Radio,
   RefreshCw,
+  RotateCcw,
+  RotateCw,
   Volume1,
   Volume2,
   VolumeX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const SEEK_STEP_SECONDS = 10;
 
 type IvsPlayerProps = {
   playbackUrl: string;
@@ -382,6 +386,32 @@ export function IvsPlayer({
     setIsFullscreen(true);
   }
 
+  function seekBy(deltaSeconds: number) {
+    const player = playerRef.current;
+    if (!player) return;
+
+    const position = player.getPosition();
+    const duration = player.getDuration();
+    if (!Number.isFinite(position)) return;
+
+    let next = position + deltaSeconds;
+    if (next < 0) next = 0;
+
+    // Live streams often expose a huge/infinite duration — only clamp when finite.
+    if (Number.isFinite(duration) && duration > 0 && duration < 1 << 30) {
+      next = Math.min(next, Math.max(0, duration - 0.25));
+    }
+
+    try {
+      player.seekTo(next);
+      player.play();
+      setUiState("playing");
+      revealControls();
+    } catch {
+      // Live edge / buffer limits can reject some seeks.
+    }
+  }
+
   function handleQualityChange(value: string) {
     const player = playerRef.current;
     if (!player) return;
@@ -534,11 +564,27 @@ export function IvsPlayer({
         )}
       >
         <div className="rounded-2xl border border-white/10 bg-black/55 p-2.5 shadow-2xl backdrop-blur-md sm:p-3">
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                seekBy(-SEEK_STEP_SECONDS);
+              }}
+              className="flex h-10 min-w-10 touch-manipulation flex-col items-center justify-center rounded-full text-white/85 transition hover:bg-white/10 active:bg-white/15"
+              aria-label={`Reculer de ${SEEK_STEP_SECONDS} secondes`}
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="text-[9px] font-semibold leading-none tracking-wide">
+                {SEEK_STEP_SECONDS}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={togglePlay}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+              className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
               aria-label={uiState === "playing" ? "Pause" : "Lecture"}
             >
               {uiState === "playing" || uiState === "buffering" ? (
@@ -550,8 +596,24 @@ export function IvsPlayer({
 
             <button
               type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                seekBy(SEEK_STEP_SECONDS);
+              }}
+              className="flex h-10 min-w-10 touch-manipulation flex-col items-center justify-center rounded-full text-white/85 transition hover:bg-white/10 active:bg-white/15"
+              aria-label={`Avancer de ${SEEK_STEP_SECONDS} secondes`}
+            >
+              <RotateCw className="h-4 w-4" />
+              <span className="text-[9px] font-semibold leading-none tracking-wide">
+                {SEEK_STEP_SECONDS}
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={toggleMute}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-white/85 transition hover:bg-white/10"
+              className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-white/85 transition hover:bg-white/10"
               aria-label={muted ? "Activer le son" : "Couper le son"}
             >
               <VolumeIcon className="h-4 w-4" />
