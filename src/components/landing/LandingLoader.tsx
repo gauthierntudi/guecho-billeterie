@@ -191,6 +191,10 @@ export function LandingLoader({ ready, onExitComplete }: LandingLoaderProps) {
     exitingRef.current = true;
     gsap.killTweensOf(progressRef.current);
 
+    const failsafe = window.setTimeout(() => {
+      onExitComplete();
+    }, 2500);
+
     gsap.to(progressRef.current, {
       value: 100,
       duration: 0.4,
@@ -206,10 +210,17 @@ export function LandingLoader({ ready, onExitComplete }: LandingLoaderProps) {
           yPercent: theme.exitDirection === "up" ? -100 : 100,
           duration: 0.85,
           ease: "power4.inOut",
-          onComplete: onExitComplete,
+          onComplete: () => {
+            window.clearTimeout(failsafe);
+            onExitComplete();
+          },
         });
       },
     });
+
+    return () => {
+      window.clearTimeout(failsafe);
+    };
   }, [onExitComplete, ready, theme]);
 
   if (!theme || !palette) {

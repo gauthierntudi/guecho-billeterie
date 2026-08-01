@@ -19,25 +19,25 @@ const FEATURES = [
     icon: MonitorPlay,
     title: "Qualité HD",
     description: "Flux optimisé multi-appareils, faible latence.",
-    accent: "from-violet-500/25 via-violet-500/5 to-transparent",
-    border: "border-violet-400/20",
-    iconWrap: "bg-violet-500/15 text-violet-300 ring-violet-400/25",
-  },
-  {
-    icon: Globe2,
-    title: "Accès mondial",
-    description: "Regardez depuis n'importe où, sans limite géographique.",
     accent: "from-amber-500/25 via-amber-500/5 to-transparent",
     border: "border-amber-400/20",
     iconWrap: "bg-amber-500/15 text-amber-300 ring-amber-400/25",
   },
   {
+    icon: Globe2,
+    title: "Accès mondial",
+    description: "Regardez depuis n'importe où, sans limite géographique.",
+    accent: "from-yellow-500/20 via-yellow-500/5 to-transparent",
+    border: "border-yellow-400/20",
+    iconWrap: "bg-yellow-500/15 text-yellow-300 ring-yellow-400/25",
+  },
+  {
     icon: Clock,
     title: "Replay 48h",
     description: "Revivez le spectacle pendant deux jours après la diffusion.",
-    accent: "from-cyan-500/20 via-cyan-500/5 to-transparent",
-    border: "border-cyan-400/20",
-    iconWrap: "bg-cyan-500/15 text-cyan-300 ring-cyan-400/25",
+    accent: "from-amber-400/20 via-amber-400/5 to-transparent",
+    border: "border-amber-300/20",
+    iconWrap: "bg-amber-400/15 text-amber-200 ring-amber-300/25",
     highlight: "48h",
   },
 ] as const;
@@ -76,19 +76,19 @@ export function StreamingSection() {
     >
       <div className="relative mx-auto max-w-7xl">
         <div className="stream-reveal mb-12 max-w-2xl sm:mb-14">
-          <div className="inline-flex items-center gap-2.5 rounded-full border border-violet-400/25 bg-violet-500/10 px-4 py-1.5 backdrop-blur-sm">
+          <div className="inline-flex items-center gap-2.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-4 py-1.5 backdrop-blur-sm">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
             </span>
-            <span className="text-[10px] uppercase tracking-[0.35em] text-violet-200 sm:text-xs">
+            <span className="text-[10px] uppercase tracking-[0.35em] text-amber-100 sm:text-xs">
               Streaming live
             </span>
           </div>
 
           <h2 className="mt-6 font-[family-name:var(--font-anton)] text-3xl uppercase leading-[0.95] sm:text-4xl md:text-5xl">
             Suivez le spectacle{" "}
-            <span className="bg-gradient-to-r from-violet-200 via-white to-cyan-200 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-amber-200 via-yellow-100 to-white bg-clip-text text-transparent">
               partout
             </span>
           </h2>
@@ -100,15 +100,19 @@ export function StreamingSection() {
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link
-              href="#billetterie"
-              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-6 py-3 text-sm uppercase tracking-[0.2em] text-white backdrop-blur-sm transition hover:border-violet-300/40 hover:bg-violet-500/15"
+              href="/streaming"
+              className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-6 py-3 text-sm uppercase tracking-[0.2em] text-black transition hover:bg-amber-300"
             >
-              <Radio className="h-4 w-4 text-violet-300" />
+              <MonitorPlay className="h-4 w-4" />
+              Accéder au live
+            </Link>
+            <Link
+              href="#billetterie"
+              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-6 py-3 text-sm uppercase tracking-[0.2em] text-white backdrop-blur-sm transition hover:border-amber-300/40 hover:bg-amber-500/15"
+            >
+              <Radio className="h-4 w-4 text-amber-300" />
               Réserver l&apos;accès
             </Link>
-            <p className="text-xs uppercase tracking-[0.25em] text-white/35">
-              Billets streaming disponibles
-            </p>
           </div>
         </div>
 

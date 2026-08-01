@@ -101,19 +101,27 @@ async function main() {
 
   for (const ticket of TICKET_TYPES) {
     const priceCdf = toCdf(ticket.priceUsd);
-    await prisma.ticketType.upsert({
+    const existing = await prisma.ticketType.findUnique({
       where: {
         eventId_tier: { eventId: event.id, tier: ticket.tier },
       },
-      update: {
-        name: ticket.name,
-        description: ticket.description,
-        priceUsd: ticket.priceUsd,
-        price: priceCdf,
-        quantity: ticket.quantity,
-        isActive: true,
-      },
-      create: {
+    });
+
+    if (existing) {
+      // Production-safe : ne pas écraser prix, stock ni soldCount
+      await prisma.ticketType.update({
+        where: { id: existing.id },
+        data: {
+          name: ticket.name,
+          description: ticket.description,
+          isActive: true,
+        },
+      });
+      continue;
+    }
+
+    await prisma.ticketType.create({
+      data: {
         eventId: event.id,
         category: ticket.category,
         tier: ticket.tier,

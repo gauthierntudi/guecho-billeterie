@@ -8,6 +8,7 @@ const NAV = [
   { href: "/admin", label: "Tableau de bord", exact: true },
   { href: "/admin/tickets", label: "Billets" },
   { href: "/admin/orders", label: "Transactions" },
+  { href: "/admin/streaming", label: "Streaming" },
 ] as const;
 
 export function AdminNav() {

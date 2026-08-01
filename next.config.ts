@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Accès dev depuis le réseau local (ex. téléphone sur 192.168.x.x)
-  allowedDevOrigins: ["192.168.1.70"],
+  allowedDevOrigins: ["192.168.1.70","192.168.1.67"],
   // Évite que Turbopack prenne /Users/mac/Documents comme racine
   // à cause du package-lock.json parent.
   turbopack: {

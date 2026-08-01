@@ -41,21 +41,38 @@ enum TicketStatus {
 }
 
 model Event {
-  id          String       @id @default(cuid())
-  slug        String       @unique
-  title       String
-  subtitle    String?
-  description String       @db.Text
-  venue       String
-  city        String       @default("Kinshasa")
-  startsAt    DateTime
-  endsAt      DateTime?
-  coverImage  String?
-  isActive    Boolean      @default(true)
-  ticketTypes TicketType[]
-  orders      Order[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  title        String
+  subtitle     String?
+  description  String        @db.Text
+  venue        String
+  city         String        @default("Kinshasa")
+  startsAt     DateTime
+  endsAt       DateTime?
+  coverImage   String?
+  isActive     Boolean       @default(true)
+  ticketTypes  TicketType[]
+  orders       Order[]
+  streamConfig StreamConfig?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model StreamConfig {
+  id             String   @id @default(cuid())
+  eventId        String   @unique
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  channelArn     String?
+  channelName    String?
+  streamKeyArn   String?
+  streamKeyValue String?
+  ingestEndpoint String?
+  playbackUrl    String?
+  isLive         Boolean  @default(false)
+  title          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model TicketType {

@@ -121,7 +121,7 @@ export const FOOTER_NAV = [
     label: "Mes billets",
   },
   {
-    href: `/evenement/${DEFAULT_EVENT_SLUG}#streaming`,
+    href: "/streaming",
     label: "Streaming",
   },
 ] as const;

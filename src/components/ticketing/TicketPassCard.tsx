@@ -1,4 +1,5 @@
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, MonitorPlay } from "lucide-react";
+import Link from "next/link";
 import type { TicketCategory, TicketTier } from "@prisma/client";
 import {
   TICKET_CATEGORY_LABELS,
@@ -94,8 +95,8 @@ export function TicketPassCard({
 
           <p className={cn("mt-4 text-xs leading-relaxed", style.description)}>
             {streamingOnly
-              ? "Consultez ce QR code depuis votre espace streaming — billet non téléchargeable."
-              : "Présentez ce QR code à l'entrée ou dans votre espace streaming."}
+              ? "Utilisez ce code pour accéder au live — billet non téléchargeable."
+              : "Présentez ce QR code à l'entrée."}
           </p>
         </div>
 
@@ -137,14 +138,13 @@ export function TicketPassCard({
               Télécharger
             </button>
           ) : streamingOnly ? (
-            <p
-              className={cn(
-                "text-center text-[10px] uppercase leading-relaxed tracking-widest",
-                style.meta,
-              )}
+            <Link
+              href={`/streaming?code=${encodeURIComponent(ticket.ticketCode)}`}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-violet-400 px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-black transition hover:bg-violet-300"
             >
-              Accès en ligne uniquement
-            </p>
+              <MonitorPlay className="h-3.5 w-3.5" />
+              Accéder au live
+            </Link>
           ) : null}
         </div>
       </div>

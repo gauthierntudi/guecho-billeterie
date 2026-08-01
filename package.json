@@ -15,10 +15,12 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@aws-sdk/client-ivs": "^3.1101.0",
     "@aws-sdk/client-s3": "^3.1075.0",
     "@aws-sdk/s3-request-presigner": "^3.1075.0",
     "@gsap/react": "^2.1.2",
     "@prisma/client": "^6.19.3",
+    "amazon-ivs-player": "^1.54.1",
     "clsx": "^2.1.1",
     "gsap": "^3.15.0",
     "libphonenumber-js": "^1.13.7",

@@ -28,40 +28,49 @@ export function useSiteLoaderReady(ready: boolean) {
   }, [context, ready]);
 }
 
-function SiteLoaderAutoReady() {
-  const pathname = usePathname();
-  const isHome = pathname === "/";
-  useSiteLoaderReady(!isHome);
-  return null;
-}
-
 export function SiteLoaderProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [loaderVisible, setLoaderVisible] = useState(true);
+  const isHome = pathname === "/";
+  const [loaderVisible, setLoaderVisible] = useState(isHome);
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
   const [pageReady, setPageReady] = useState(false);
 
   useLayoutEffect(() => {
+    // Full-page loader only on the home route. Other pages (streaming, etc.)
+    // were getting stuck behind a black overlay on mobile when the exit
+    // animation failed or pageReady raced to false.
+    if (!isHome) {
+      setLoaderVisible(false);
+      setMinTimeElapsed(true);
+      setPageReady(true);
+      return;
+    }
+
     setLoaderVisible(true);
     setMinTimeElapsed(false);
     setPageReady(false);
-  }, [pathname]);
+  }, [pathname, isHome]);
 
   useEffect(() => {
+    if (!isHome) return;
+
     const timer = window.setTimeout(() => setMinTimeElapsed(true), 1200);
     const fallback = window.setTimeout(() => setPageReady(true), 8000);
+    // Hard dismiss if GSAP exit never completes (common on some mobile browsers).
+    const hardDismiss = window.setTimeout(() => setLoaderVisible(false), 10_000);
 
     return () => {
       window.clearTimeout(timer);
       window.clearTimeout(fallback);
+      window.clearTimeout(hardDismiss);
     };
-  }, [pathname]);
+  }, [pathname, isHome]);
 
   const handleLoaderExit = useCallback(() => {
     setLoaderVisible(false);
   }, []);
 
-  const loaderReady = minTimeElapsed && pageReady;
+  const loaderReady = isHome && minTimeElapsed && pageReady;
 
   const value = useMemo(
     () => ({
@@ -72,10 +81,9 @@ export function SiteLoaderProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <SiteLoaderContext.Provider value={value}>
-      {loaderVisible ? (
+      {isHome && loaderVisible ? (
         <LandingLoader ready={loaderReady} onExitComplete={handleLoaderExit} />
       ) : null}
-      <SiteLoaderAutoReady />
       {children}
     </SiteLoaderContext.Provider>
   );

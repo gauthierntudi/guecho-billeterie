@@ -32,7 +32,7 @@ export function SiteHeader({
           duration: 0.8,
           stagger: 0.1,
           ease: "power3.out",
-          clearProps: "transform",
+          clearProps: "all",
         },
       );
     },
