@@ -66,6 +66,7 @@ export function IvsPlayer({
   const [muted, setMuted] = useState(initialMuted);
   const [volume, setVolume] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [latency, setLatency] = useState<number | null>(null);
   const [qualities, setQualities] = useState<Quality[]>([]);
@@ -226,12 +227,48 @@ export function IvsPlayer({
   ]);
 
   useEffect(() => {
-    function onFullscreenChange() {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+    const video = videoRef.current;
+
+    function syncFullscreenState() {
+      const doc = document as Document & {
+        webkitFullscreenElement?: Element | null;
+      };
+      const nativeFs = Boolean(
+        document.fullscreenElement || doc.webkitFullscreenElement,
+      );
+      const videoFs = Boolean(
+        video &&
+          (
+            video as HTMLVideoElement & {
+              webkitDisplayingFullscreen?: boolean;
+            }
+          ).webkitDisplayingFullscreen,
+      );
+      setIsFullscreen(nativeFs || videoFs || cssFullscreen);
     }
+
+    function onFullscreenChange() {
+      syncFullscreenState();
+    }
+
     document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
+    document.addEventListener(
+      "webkitfullscreenchange",
+      onFullscreenChange as EventListener,
+    );
+    video?.addEventListener("webkitbeginfullscreen", onFullscreenChange);
+    video?.addEventListener("webkitendfullscreen", onFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener(
+        "webkitfullscreenchange",
+        onFullscreenChange as EventListener,
+      );
+      video?.removeEventListener("webkitbeginfullscreen", onFullscreenChange);
+      video?.removeEventListener("webkitendfullscreen", onFullscreenChange);
+    };
+  }, [cssFullscreen]);
 
   function togglePlay() {
     const player = playerRef.current;
@@ -272,13 +309,77 @@ export function IvsPlayer({
   }
 
   async function toggleFullscreen() {
-    const node = containerRef.current;
-    if (!node) return;
-    if (document.fullscreenElement) {
-      await document.exitFullscreen();
-    } else {
-      await node.requestFullscreen();
+    const container = containerRef.current;
+    const video = videoRef.current;
+    if (!container || !video) return;
+
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    const containerEl = container as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    const videoEl = video as HTMLVideoElement & {
+      webkitEnterFullscreen?: () => void;
+      webkitExitFullscreen?: () => void;
+      webkitDisplayingFullscreen?: boolean;
+    };
+
+    const inNativeFs = Boolean(
+      document.fullscreenElement || doc.webkitFullscreenElement,
+    );
+    const inVideoFs = Boolean(videoEl.webkitDisplayingFullscreen);
+
+    try {
+      if (cssFullscreen) {
+        setCssFullscreen(false);
+        setIsFullscreen(false);
+        return;
+      }
+
+      if (inNativeFs) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else {
+          await doc.webkitExitFullscreen?.();
+        }
+        setIsFullscreen(false);
+        return;
+      }
+
+      if (inVideoFs) {
+        videoEl.webkitExitFullscreen?.();
+        setIsFullscreen(false);
+        return;
+      }
+
+      // Desktop / Android: fullscreen the player shell (keeps custom controls).
+      if (typeof containerEl.requestFullscreen === "function") {
+        await containerEl.requestFullscreen();
+        setIsFullscreen(true);
+        return;
+      }
+
+      if (typeof containerEl.webkitRequestFullscreen === "function") {
+        await containerEl.webkitRequestFullscreen();
+        setIsFullscreen(true);
+        return;
+      }
+
+      // iOS Safari: only <video> can go native fullscreen.
+      if (typeof videoEl.webkitEnterFullscreen === "function") {
+        videoEl.webkitEnterFullscreen();
+        setIsFullscreen(true);
+        return;
+      }
+    } catch {
+      // Fall through to CSS fullscreen.
     }
+
+    // Fallback: CSS pseudo-fullscreen (works on stubborn mobile browsers).
+    setCssFullscreen(true);
+    setIsFullscreen(true);
   }
 
   function handleQualityChange(value: string) {
@@ -309,6 +410,16 @@ export function IvsPlayer({
     revealControls();
   }
 
+  // Lock body scroll while CSS fullscreen is active (mobile fallback).
+  useEffect(() => {
+    if (!cssFullscreen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [cssFullscreen]);
+
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const showOverlaySpinner = uiState === "loading" || uiState === "buffering";
   const showBigPlay = uiState === "paused" || uiState === "ended" || uiState === "ready";
@@ -318,11 +429,12 @@ export function IvsPlayer({
       ref={containerRef}
       className={cn(
         "group relative h-full w-full overflow-hidden bg-black select-none",
+        cssFullscreen && "fixed inset-0 z-[200] h-dvh w-screen rounded-none",
         className,
       )}
       onPointerMove={handlePointerMove}
       onPointerLeave={() => {
-        if (uiState === "playing") setControlsVisible(false);
+        if (uiState === "playing" && !cssFullscreen) setControlsVisible(false);
       }}
     >
       <video
@@ -495,8 +607,12 @@ export function IvsPlayer({
 
               <button
                 type="button"
-                onClick={() => void toggleFullscreen()}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-white/85 transition hover:bg-white/10"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void toggleFullscreen();
+                }}
+                className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-white/85 transition hover:bg-white/10"
                 aria-label={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
               >
                 {isFullscreen ? (

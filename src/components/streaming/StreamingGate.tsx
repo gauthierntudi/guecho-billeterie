@@ -27,11 +27,13 @@ type AccessPayload = {
   eventTitle: string;
   ticketCode: string;
   attendeeName: string | null;
+  sessionId: string | null;
 };
 
 const ACCESS_STORAGE_KEY = "guecho-stream-access";
 const STATUS_TIMEOUT_MS = 12_000;
 const ACCESS_TIMEOUT_MS = 45_000;
+const HEARTBEAT_MS = 30_000;
 
 type StreamingGateProps = {
   initialStatus?: StreamStatus | null;
@@ -68,7 +70,11 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
       if (raw) {
         const saved = JSON.parse(raw) as AccessPayload;
         if (saved?.ticketCode) {
-          setAccess(saved);
+          // Re-validate so concurrent session slots are claimed correctly.
+          void requestAccess({
+            ticketCode: saved.ticketCode,
+            sessionId: saved.sessionId,
+          });
           return;
         }
       }
@@ -99,7 +105,6 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
         }
       } catch (err) {
         if (cancelled) return;
-        // Keep existing status/errors; status poll must not wipe access errors.
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
@@ -120,13 +125,71 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
   useEffect(() => {
     if (!access || access.isLive) return;
     if (!status?.isLive) return;
-    void requestAccess({ ticketCode: access.ticketCode });
+    void requestAccess({
+      ticketCode: access.ticketCode,
+      sessionId: access.sessionId,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status?.isLive]);
+
+  // Keep viewer session alive while watching.
+  useEffect(() => {
+    if (!access?.sessionId || !access.ticketCode) return;
+    if (!access.isLive || !access.playbackUrl) return;
+
+    let cancelled = false;
+
+    async function beat() {
+      try {
+        const response = await fetch("/api/streaming/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: access!.sessionId,
+            ticketCode: access!.ticketCode,
+          }),
+        });
+        if (!response.ok && !cancelled) {
+          const data = await response.json().catch(() => ({}));
+          setError(data.error ?? "Session expirée");
+          setAccess(null);
+          sessionStorage.removeItem(ACCESS_STORAGE_KEY);
+        }
+      } catch {
+        // transient network errors: retry on next beat
+      }
+    }
+
+    void beat();
+    const timer = window.setInterval(beat, HEARTBEAT_MS);
+
+    function release() {
+      if (!access?.sessionId) return;
+      const payload = JSON.stringify({
+        sessionId: access.sessionId,
+        ticketCode: access.ticketCode,
+      });
+      void fetch("/api/streaming/session", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true,
+      }).catch(() => undefined);
+    }
+
+    window.addEventListener("pagehide", release);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("pagehide", release);
+    };
+  }, [access?.sessionId, access?.ticketCode, access?.isLive, access?.playbackUrl]);
 
   async function requestAccess(payload: {
     ticketCode?: string;
     phone?: string;
+    sessionId?: string | null;
   }) {
     setSubmitting(true);
     setError(null);
@@ -136,6 +199,19 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
       ACCESS_TIMEOUT_MS,
     );
 
+    let existingSessionId = payload.sessionId ?? null;
+    if (!existingSessionId) {
+      try {
+        const raw = sessionStorage.getItem(ACCESS_STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw) as AccessPayload;
+          existingSessionId = saved.sessionId ?? null;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     try {
       const response = await fetch("/api/streaming/access", {
         method: "POST",
@@ -143,6 +219,7 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
         body: JSON.stringify({
           ticketCode: payload.ticketCode?.trim().toUpperCase(),
           phone: payload.phone?.trim(),
+          sessionId: existingSessionId ?? undefined,
         }),
         signal: controller.signal,
       });
@@ -183,7 +260,6 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
     const codeField = form.elements.namedItem(
       "ticketCode",
     ) as HTMLInputElement | null;
-    // Read from DOM too: mobile autofill often skips React onChange.
     const code = (codeField?.value ?? ticketCode)
       .trim()
       .toUpperCase()
@@ -210,7 +286,21 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
     setError("Entrez un code billet ou un numéro de téléphone");
   }
 
-  function resetAccess() {
+  async function resetAccess() {
+    if (access?.sessionId && access.ticketCode) {
+      try {
+        await fetch("/api/streaming/session", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: access.sessionId,
+            ticketCode: access.ticketCode,
+          }),
+        });
+      } catch {
+        // ignore
+      }
+    }
     setAccess(null);
     setError(null);
     sessionStorage.removeItem(ACCESS_STORAGE_KEY);
@@ -303,7 +393,8 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
         </h1>
         <p className="mt-4 text-sm leading-relaxed text-white/55">
           Entrez le code de votre billet Access Streaming ou le numéro de
-          téléphone associé à la commande pour regarder {eventTitle}.
+          téléphone associé à la commande pour regarder {eventTitle}.{" "}
+          Maximum 2 appareils en même temps.
         </p>
       </div>
 

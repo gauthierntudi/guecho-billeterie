@@ -75,6 +75,17 @@ model StreamConfig {
   updatedAt      DateTime @updatedAt
 }
 
+/// Active viewers for a streaming ticket (max 2 concurrent).
+model StreamViewerSession {
+  id         String   @id @default(cuid())
+  ticketCode String
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([ticketCode, lastSeenAt])
+  @@index([lastSeenAt])
+}
+
 model TicketType {
   id          String         @id @default(cuid())
   eventId     String

@@ -221,8 +221,112 @@ export type StreamAccessResult =
       eventTitle: string;
       ticketCode: string;
       attendeeName: string | null;
+      sessionId: string | null;
     }
   | { success: false; error: string };
+
+export const MAX_STREAM_SESSIONS_PER_TICKET = 2;
+/** Session stays active if heartbeaten within this window. */
+export const STREAM_SESSION_TTL_MS = 90_000;
+
+function staleSessionCutoff(now = new Date()) {
+  return new Date(now.getTime() - STREAM_SESSION_TTL_MS);
+}
+
+export async function claimStreamViewerSession(
+  ticketCode: string,
+  sessionId?: string | null,
+): Promise<{ success: true; sessionId: string } | { success: false; error: string }> {
+  const code = ticketCode.trim().toUpperCase();
+  if (!code) {
+    return { success: false, error: "Code billet requis" };
+  }
+
+  const now = new Date();
+  const staleBefore = staleSessionCutoff(now);
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`stream:${code}`}))`;
+
+      await tx.streamViewerSession.deleteMany({
+        where: { lastSeenAt: { lt: staleBefore } },
+      });
+
+      if (sessionId) {
+        const existing = await tx.streamViewerSession.findFirst({
+          where: { id: sessionId, ticketCode: code },
+        });
+        if (existing) {
+          await tx.streamViewerSession.update({
+            where: { id: existing.id },
+            data: { lastSeenAt: now },
+          });
+          return { success: true as const, sessionId: existing.id };
+        }
+      }
+
+      const activeCount = await tx.streamViewerSession.count({
+        where: {
+          ticketCode: code,
+          lastSeenAt: { gte: staleBefore },
+        },
+      });
+
+      if (activeCount >= MAX_STREAM_SESSIONS_PER_TICKET) {
+        return {
+          success: false as const,
+          error:
+            "Limite atteinte : 2 connexions simultanées maximum pour ce billet. Fermez un autre appareil ou réessayez dans 1 à 2 minutes.",
+        };
+      }
+
+      const created = await tx.streamViewerSession.create({
+        data: {
+          ticketCode: code,
+          lastSeenAt: now,
+        },
+      });
+
+      return { success: true as const, sessionId: created.id };
+    });
+  } catch {
+    return {
+      success: false,
+      error: "Impossible de réserver une place de visionnage",
+    };
+  }
+}
+
+export async function heartbeatStreamViewerSession(
+  sessionId: string,
+  ticketCode: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const code = ticketCode.trim().toUpperCase();
+  const updated = await prisma.streamViewerSession.updateMany({
+    where: { id: sessionId, ticketCode: code },
+    data: { lastSeenAt: new Date() },
+  });
+
+  if (updated.count === 0) {
+    return { success: false, error: "Session expirée ou invalide" };
+  }
+
+  return { success: true };
+}
+
+export async function releaseStreamViewerSession(
+  sessionId: string,
+  ticketCode?: string,
+) {
+  const code = ticketCode?.trim().toUpperCase();
+  await prisma.streamViewerSession.deleteMany({
+    where: {
+      id: sessionId,
+      ...(code ? { ticketCode: code } : {}),
+    },
+  });
+}
 
 const ticketAccessInclude = {
   orderItem: {
@@ -264,6 +368,7 @@ type TicketAccessRecord = {
 function buildAccessFromTicket(
   ticket: TicketAccessRecord,
   eventSlug: string,
+  sessionId: string | null = null,
 ): StreamAccessResult {
   if (ticket.status !== TicketStatus.VALID) {
     return { success: false, error: "Ce billet n'est plus valide" };
@@ -299,12 +404,14 @@ function buildAccessFromTicket(
     eventTitle: order.event.title,
     ticketCode: ticket.ticketCode,
     attendeeName: ticket.attendeeName,
+    sessionId,
   };
 }
 
 export async function grantStreamAccessByTicketCode(
   ticketCode: string,
   slug?: string,
+  sessionId?: string | null,
 ): Promise<StreamAccessResult> {
   const code = ticketCode.trim().toUpperCase();
   if (!code) {
@@ -322,12 +429,23 @@ export async function grantStreamAccessByTicketCode(
     return { success: false, error: "Billet introuvable" };
   }
 
-  return buildAccessFromTicket(ticket, eventSlug);
+  const access = buildAccessFromTicket(ticket, eventSlug);
+  if (!access.success) return access;
+
+  // Only reserve a viewer slot when playback is granted.
+  if (access.isLive && access.playbackUrl) {
+    const claim = await claimStreamViewerSession(code, sessionId);
+    if (!claim.success) return claim;
+    return { ...access, sessionId: claim.sessionId };
+  }
+
+  return { ...access, sessionId: null };
 }
 
 export async function grantStreamAccessByPhone(
   phone: string,
   slug?: string,
+  sessionId?: string | null,
 ): Promise<StreamAccessResult> {
   const variants = getPhoneLookupVariants(phone);
   if (!variants.length) {
@@ -361,23 +479,28 @@ export async function grantStreamAccessByPhone(
     };
   }
 
-  return buildAccessFromTicket(ticket, eventSlug);
+  return grantStreamAccessByTicketCode(ticket.ticketCode, eventSlug, sessionId);
 }
 
 export async function grantStreamAccess(input: {
   ticketCode?: string;
   phone?: string;
   slug?: string;
+  sessionId?: string | null;
 }): Promise<StreamAccessResult> {
   const ticketCode = input.ticketCode?.trim() ?? "";
   const phone = input.phone?.trim() ?? "";
 
   if (ticketCode) {
-    return grantStreamAccessByTicketCode(ticketCode, input.slug);
+    return grantStreamAccessByTicketCode(
+      ticketCode,
+      input.slug,
+      input.sessionId,
+    );
   }
 
   if (phone) {
-    return grantStreamAccessByPhone(phone, input.slug);
+    return grantStreamAccessByPhone(phone, input.slug, input.sessionId);
   }
 
   return {

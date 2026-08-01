@@ -8,6 +8,7 @@ const accessSchema = z
   .object({
     ticketCode: z.string().min(4).max(32).optional(),
     phone: z.string().min(6).max(32).optional(),
+    sessionId: z.string().min(8).max(64).optional(),
     slug: z.string().optional(),
   })
   .refine(
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
       ticketCode: parsed.data.ticketCode,
       phone: parsed.data.phone,
       slug: parsed.data.slug,
+      sessionId: parsed.data.sessionId,
     });
 
     if (!result.success) {
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
         eventTitle: result.eventTitle,
         ticketCode: result.ticketCode,
         attendeeName: result.attendeeName,
+        sessionId: result.sessionId,
       },
       { headers: { "Cache-Control": "no-store" } },
     );
