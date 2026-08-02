@@ -55,25 +55,34 @@ async function fetchStreamStatus(signal?: AbortSignal): Promise<StreamStatus> {
 
 export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
   const searchParams = useSearchParams();
+  const autoCode = searchParams.get("code")?.trim().toUpperCase() ?? "";
+  const isAutoConnect = Boolean(autoCode) || searchParams.get("auto") === "1";
   const [status, setStatus] = useState<StreamStatus | null>(initialStatus);
-  const [ticketCode, setTicketCode] = useState(
-    () => searchParams.get("code")?.toUpperCase() ?? "",
-  );
+  const [ticketCode, setTicketCode] = useState(() => autoCode);
   const [phone, setPhone] = useState<Value>();
   const [access, setAccess] = useState<AccessPayload | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(() => Boolean(autoCode));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const code = searchParams.get("code");
+    const code = searchParams.get("code")?.trim().toUpperCase() ?? "";
+    const urlError = searchParams.get("error")?.trim();
+    if (urlError && !code) {
+      setError(urlError);
+      setSubmitting(false);
+    }
+
+    // Fresh purchase / deep link: always connect with the URL code first.
+    if (code) {
+      void requestAccess({ ticketCode: code });
+      return;
+    }
 
     try {
       const raw = sessionStorage.getItem(ACCESS_STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as AccessPayload;
         if (saved?.sessionId && (saved.phone || saved.ticketCode)) {
-          // Re-validate so concurrent session slots stay enforced.
-          // Prefer phone so multi-ticket failover still works after refresh.
           void requestAccess({
             phone: saved.phone ?? undefined,
             ticketCode: saved.phone ? undefined : saved.ticketCode,
@@ -85,10 +94,6 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
       }
     } catch {
       // ignore
-    }
-
-    if (code) {
-      void requestAccess({ ticketCode: code });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -375,6 +380,33 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
           >
             Changer d&apos;accès
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Purchase redirect / deep link: skip the form while connecting.
+  if (isAutoConnect && (submitting || !error)) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-6 py-14 text-center backdrop-blur">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-amber-300" />
+          <p className="mt-5 font-[family-name:var(--font-anton)] text-2xl uppercase text-white">
+            Connexion au live
+          </p>
+          <p className="mx-auto mt-3 max-w-sm text-sm text-white/55">
+            {ticketCode
+              ? `Billet ${ticketCode} — ouverture du player…`
+              : "Ouverture du player…"}
+          </p>
+          {error ? (
+            <p
+              role="alert"
+              className="mx-auto mt-5 max-w-sm rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-200"
+            >
+              {error}
+            </p>
+          ) : null}
         </div>
       </div>
     );

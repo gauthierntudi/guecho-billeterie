@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   getOrderById,
   fulfillOrder,
@@ -11,6 +11,8 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
 import { EventPageBackground } from "@/components/event/EventPageBackground";
 import { ConfirmationView } from "@/components/ticketing/ConfirmationView";
 import { ConfirmationPaymentPoller } from "@/components/ticketing/ConfirmationPaymentPoller";
+import { getPublicStreamStatus } from "@/lib/streaming";
+import { isStreamingTicket } from "@/types/ticketing";
 
 type PageProps = {
   params: Promise<{ orderId: string }>;
@@ -74,6 +76,21 @@ export default async function ConfirmationPage({
       category: item.ticketType.category,
     })),
   );
+
+  // Live déjà ouvert + billet streaming → entrée connectée (cookie + player).
+  if (viewStatus === "paid") {
+    const streamingTicket = tickets.find((ticket) => isStreamingTicket(ticket));
+    if (streamingTicket) {
+      const streamStatus = await getPublicStreamStatus(order.event.slug);
+      if (streamStatus?.isLive) {
+        const enter = new URLSearchParams({
+          code: streamingTicket.ticketCode,
+          slug: order.event.slug,
+        });
+        redirect(`/api/streaming/enter?${enter.toString()}`);
+      }
+    }
+  }
 
   const backgroundImage = order.event.coverImage?.startsWith("/img/")
     ? order.event.coverImage
