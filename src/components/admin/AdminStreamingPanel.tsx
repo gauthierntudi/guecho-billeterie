@@ -11,7 +11,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { AdminStreamView } from "@/lib/streaming";
-import { IvsPlayer } from "@/components/streaming/IvsPlayer";
+import { AdminStreamPreview } from "@/components/admin/AdminStreamPreview";
 import { adminCard } from "@/components/admin/admin-styles";
 import { cn } from "@/lib/utils";
 
@@ -389,10 +389,8 @@ export function AdminStreamingPanel() {
 
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950">
             {previewEnabled && stream.playbackUrl ? (
-              <IvsPlayer
-                key={previewKey}
-                playbackUrl={stream.playbackUrl}
-                title="Preview admin"
+              <AdminStreamPreview
+                reloadKey={previewKey}
                 showLiveBadge={stream.awsBroadcasting}
                 className="absolute inset-0"
               />

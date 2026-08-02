@@ -61,6 +61,8 @@ export async function buildAuthorizedPlaybackUrl(input: {
   playbackUrl: string;
   channelArn: string;
   ttlSec?: number;
+  /** Override JWT origin claim (useful for admin preview on localhost). */
+  allowedOrigin?: string;
 }) {
   if (!isIvsPlaybackAuthConfigured()) {
     return {
@@ -73,6 +75,7 @@ export async function buildAuthorizedPlaybackUrl(input: {
   const token = await createIvsPlaybackToken({
     channelArn: input.channelArn,
     ttlSec: input.ttlSec,
+    allowedOrigin: input.allowedOrigin,
   });
 
   const joiner = input.playbackUrl.includes("?") ? "&" : "?";
