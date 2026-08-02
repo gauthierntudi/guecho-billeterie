@@ -2,8 +2,23 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { ADMIN_COOKIE_NAME } from "@/lib/admin-auth";
 
+function isTruthyEnv(value: string | undefined) {
+  return ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
+}
+
+function shouldRedirectHomeToStreaming() {
+  return isTruthyEnv(process.env.REDIRECT_HOME_TO_STREAMING);
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (
+    shouldRedirectHomeToStreaming() &&
+    (pathname === "/" || pathname === "/home")
+  ) {
+    return NextResponse.redirect(new URL("/streaming", request.url));
+  }
 
   if (
     pathname === "/admin/login" ||
@@ -30,5 +45,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ["/", "/home", "/admin/:path*", "/api/admin/:path*"],
 };

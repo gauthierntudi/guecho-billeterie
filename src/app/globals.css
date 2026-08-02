@@ -158,6 +158,31 @@ body {
   display: none;
 }
 
+/* Netflix-style streaming access form */
+.stream-nf-form .tel-input {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 0.15rem 0.25rem 0.55rem;
+}
+
+.stream-nf-form .tel-input:focus-within {
+  border-color: transparent;
+}
+
+.stream-nf-form .tel-input__field {
+  font-size: 1rem;
+  color: #fff;
+}
+
+.stream-nf-form .tel-input__field::placeholder {
+  color: transparent;
+}
+
+.stream-nf-form .tel-input__country {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .tel-country-select__trigger {
   display: inline-flex;
   align-items: center;

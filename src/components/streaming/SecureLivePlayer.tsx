@@ -8,6 +8,7 @@ type SecureLivePlayerProps = {
   title?: string | null;
   className?: string;
   onSessionLost?: (message: string) => void;
+  onExit?: () => void;
 };
 
 /**
@@ -18,6 +19,7 @@ export function SecureLivePlayer({
   title,
   className,
   onSessionLost,
+  onExit,
 }: SecureLivePlayerProps) {
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +98,8 @@ export function SecureLivePlayer({
       playbackUrl={playbackUrl}
       title={title ?? undefined}
       className={className}
+      onExit={onExit}
+      exitLabel="Changer d'accès"
     />
   );
 }

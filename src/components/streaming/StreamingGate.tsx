@@ -5,12 +5,13 @@ import { useSearchParams } from "next/navigation";
 import type { Value } from "react-phone-number-input";
 import {
   CheckCircle2,
+  ChevronRight,
+  CircleX,
   Loader2,
-  MonitorPlay,
-  Ticket,
 } from "lucide-react";
 import { SecureLivePlayer } from "@/components/streaming/SecureLivePlayer";
 import { TelInput } from "@/components/ticketing/TelInput";
+import { cn } from "@/lib/utils";
 
 type StreamStatus = {
   isLive: boolean;
@@ -39,6 +40,8 @@ const HEARTBEAT_MS = 30_000;
 
 type StreamingGateProps = {
   initialStatus?: StreamStatus | null;
+  /** Fired when the live player is shown / hidden. */
+  onPlaybackActive?: (active: boolean) => void;
 };
 
 async function fetchStreamStatus(signal?: AbortSignal): Promise<StreamStatus> {
@@ -53,50 +56,78 @@ async function fetchStreamStatus(signal?: AbortSignal): Promise<StreamStatus> {
   return data as StreamStatus;
 }
 
-export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
+export function StreamingGate({
+  initialStatus = null,
+  onPlaybackActive,
+}: StreamingGateProps) {
   const searchParams = useSearchParams();
   const autoCode = searchParams.get("code")?.trim().toUpperCase() ?? "";
-  const isAutoConnect = Boolean(autoCode) || searchParams.get("auto") === "1";
   const [status, setStatus] = useState<StreamStatus | null>(initialStatus);
   const [ticketCode, setTicketCode] = useState(() => autoCode);
   const [phone, setPhone] = useState<Value>();
   const [access, setAccess] = useState<AccessPayload | null>(null);
-  const [submitting, setSubmitting] = useState(() => Boolean(autoCode));
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Avoid flashing the form/CTA before URL or session restore finishes. */
+  const [booting, setBooting] = useState(true);
+
+  const playbackActive = Boolean(
+    access?.isLive && access.hasPlayback && access.sessionId,
+  );
 
   useEffect(() => {
-    const code = searchParams.get("code")?.trim().toUpperCase() ?? "";
-    const urlError = searchParams.get("error")?.trim();
-    if (urlError && !code) {
-      setError(urlError);
-      setSubmitting(false);
-    }
+    onPlaybackActive?.(playbackActive);
+  }, [playbackActive, onPlaybackActive]);
 
-    // Fresh purchase / deep link: always connect with the URL code first.
-    if (code) {
-      void requestAccess({ ticketCode: code });
-      return;
-    }
+  useEffect(() => {
+    let cancelled = false;
+    const codeParam =
+      searchParams.get("code")?.trim().toUpperCase() ?? "";
+    const errorParam = searchParams.get("error")?.trim() ?? "";
 
-    try {
-      const raw = sessionStorage.getItem(ACCESS_STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as AccessPayload;
-        if (saved?.sessionId && (saved.phone || saved.ticketCode)) {
-          void requestAccess({
-            phone: saved.phone ?? undefined,
-            ticketCode: saved.phone ? undefined : saved.ticketCode,
-            sessionId: saved.sessionId,
-          });
-          return;
+    async function boot() {
+      if (errorParam && !codeParam) {
+        if (!cancelled) {
+          setError(errorParam);
+          setBooting(false);
         }
-        sessionStorage.removeItem(ACCESS_STORAGE_KEY);
+        return;
       }
-    } catch {
-      // ignore
+
+      if (codeParam) {
+        await requestAccess({ ticketCode: codeParam });
+        if (!cancelled) setBooting(false);
+        return;
+      }
+
+      try {
+        const raw = sessionStorage.getItem(ACCESS_STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw) as AccessPayload;
+          if (saved?.sessionId && (saved.phone || saved.ticketCode)) {
+            await requestAccess({
+              phone: saved.phone ?? undefined,
+              ticketCode: saved.phone ? undefined : saved.ticketCode,
+              sessionId: saved.sessionId,
+            });
+            if (!cancelled) setBooting(false);
+            return;
+          }
+          sessionStorage.removeItem(ACCESS_STORAGE_KEY);
+        }
+      } catch {
+        // ignore
+      }
+
+      if (!cancelled) setBooting(false);
     }
+
+    void boot();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams.toString()]);
 
   useEffect(() => {
     let cancelled = false;
@@ -317,154 +348,95 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
 
   if (access?.isLive && access.hasPlayback && access.sessionId) {
     return (
-      <div className="-mx-4 space-y-4 sm:mx-0 sm:space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3 px-4 sm:px-0">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.28em] text-amber-300">
-              En direct
-            </p>
-            <h1 className="mt-2 font-[family-name:var(--font-anton)] text-3xl uppercase leading-[0.95] text-white md:text-4xl">
-              {access.title ?? access.eventTitle}
-            </h1>
-            <p className="mt-2 text-sm text-white/45">
-              Billet {access.ticketCode}
-              {access.attendeeName ? ` · ${access.attendeeName}` : ""}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void resetAccess()}
-            className="rounded-full border border-amber-400/25 px-4 py-2 text-[10px] uppercase tracking-widest text-amber-100/70 transition hover:border-amber-300/50 hover:text-amber-100"
-          >
-            Changer d&apos;accès
-          </button>
-        </div>
-
-        <div className="relative aspect-video overflow-hidden bg-black shadow-[0_0_80px_-20px_rgba(251,191,36,0.45)] sm:rounded-2xl sm:border sm:border-amber-400/20">
-          <SecureLivePlayer
-            title={access.title ?? access.eventTitle}
-            className="absolute inset-0"
-            onSessionLost={(message) => {
-              setError(message);
-              setAccess(null);
-              sessionStorage.removeItem(ACCESS_STORAGE_KEY);
-            }}
-          />
-        </div>
+      <div className="relative h-dvh w-full bg-black">
+        <SecureLivePlayer
+          title={access.title ?? access.eventTitle}
+          className="absolute inset-0 h-full w-full"
+          onExit={() => void resetAccess()}
+          onSessionLost={(message) => {
+            setError(message);
+            setAccess(null);
+            sessionStorage.removeItem(ACCESS_STORAGE_KEY);
+          }}
+        />
       </div>
     );
   }
 
   if (access) {
     return (
-      <div className="mx-auto max-w-xl">
-        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-6 py-10 text-center backdrop-blur">
-          <CheckCircle2 className="mx-auto h-8 w-8 text-amber-300" />
-          <p className="mt-4 font-[family-name:var(--font-anton)] text-2xl uppercase text-white">
-            Accès validé
-          </p>
-          <p className="mx-auto mt-3 max-w-sm text-sm text-white/55">
-            Billet {access.ticketCode}
-            {access.attendeeName ? ` · ${access.attendeeName}` : ""}. Place
-            réservée (2 max par billet). Le player s’ouvrira automatiquement
-            dès le démarrage du live.
-          </p>
-          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-black/30 px-4 py-2 text-[10px] uppercase tracking-[0.22em] text-amber-100/60">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-300" />
-            {isLive ? "Connexion au live…" : "En attente du live"}
-          </div>
-          <button
-            type="button"
-            onClick={() => void resetAccess()}
-            className="mt-6 block w-full rounded-full border border-amber-400/20 px-4 py-3 text-[10px] uppercase tracking-widest text-amber-100/60 transition hover:border-amber-300/40 hover:text-amber-100"
-          >
-            Changer d&apos;accès
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Purchase redirect / deep link: skip the form while connecting.
-  if (isAutoConnect && (submitting || !error)) {
-    return (
-      <div className="mx-auto max-w-xl">
-        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-6 py-14 text-center backdrop-blur">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-amber-300" />
-          <p className="mt-5 font-[family-name:var(--font-anton)] text-2xl uppercase text-white">
-            Connexion au live
-          </p>
-          <p className="mx-auto mt-3 max-w-sm text-sm text-white/55">
-            {ticketCode
-              ? `Billet ${ticketCode} — ouverture du player…`
-              : "Ouverture du player…"}
-          </p>
-          {error ? (
-            <p
-              role="alert"
-              className="mx-auto mt-5 max-w-sm rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-200"
-            >
-              {error}
-            </p>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mx-auto max-w-xl">
-      <div className="mb-8">
-        <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-4 py-1.5">
-          <span className="relative flex h-2 w-2">
-            <span
-              className={`absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-60 ${isLive ? "animate-ping" : ""}`}
-            />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
-          </span>
-          <span className="text-[10px] uppercase tracking-[0.35em] text-amber-100">
-            {isLive ? "Live en cours" : "Streaming"}
-          </span>
-        </div>
-        <h1 className="mt-5 font-[family-name:var(--font-anton)] text-4xl uppercase leading-[0.95] text-white md:text-5xl">
-          Accès live
+      <div className="mx-auto flex min-h-[55dvh] max-w-3xl flex-col items-center justify-center px-2 text-center">
+        <CheckCircle2 className="h-10 w-10 text-amber-400" strokeWidth={1.75} />
+        <h1 className="mt-6 font-[family-name:var(--font-anton)] text-4xl uppercase leading-[0.95] text-white sm:text-5xl">
+          Accès validé
         </h1>
-        <p className="mt-4 text-sm leading-relaxed text-white/55">
-          Entrez le code de votre billet Access Streaming ou le numéro de
-          téléphone associé à la commande pour regarder {eventTitle}.{" "}
-          2 appareils par billet — si plusieurs billets sont liés au même
-          numéro, les places se cumulent automatiquement.
+        <p className="mt-4 max-w-lg text-base text-white/80 sm:text-lg">
+          Billet {access.ticketCode}
+          {access.attendeeName ? ` · ${access.attendeeName}` : ""}.
+        </p>
+        <p className="mt-2 max-w-md text-sm text-white/55">
+          Place réservée (2 max par billet). Le player s’ouvrira automatiquement
+          dès le démarrage du live.
+        </p>
+        <div className="mt-8 inline-flex items-center gap-2 text-sm text-white/70">
+          <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+          {isLive ? "Connexion au live…" : "En attente du live"}
+        </div>
+        <button
+          type="button"
+          onClick={() => void resetAccess()}
+          className="mt-8 text-sm text-white/55 underline-offset-4 transition hover:text-white hover:underline"
+        >
+          Changer d&apos;accès
+        </button>
+      </div>
+    );
+  }
+
+  // Don't flash the form+CTA before URL / session restore finishes.
+  if (booting) {
+    return (
+      <div className="mx-auto flex min-h-[55dvh] max-w-3xl flex-col items-center justify-center px-2 text-center">
+        <Loader2 className="h-10 w-10 animate-spin text-amber-400" />
+        <h1 className="mt-6 font-[family-name:var(--font-anton)] text-4xl uppercase leading-[0.95] text-white sm:text-5xl">
+          Connexion au live
+        </h1>
+        <p className="mt-4 max-w-md text-base text-white/70">
+          {ticketCode
+            ? `Billet ${ticketCode} — ouverture du player…`
+            : "Préparation de votre accès…"}
         </p>
       </div>
+    );
+  }
+
+  const codeFilled = ticketCode.trim().length > 0;
+  const phoneFilled = Boolean(phone && phone.replace(/\D/g, "").length >= 8);
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-1 pt-2 text-center sm:px-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">
+        {isLive ? "En direct maintenant" : "Streaming Guecho"}
+      </p>
+      <h1 className="mt-3 font-[family-name:var(--font-anton)] text-3xl uppercase leading-[0.95] text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.85)] sm:text-4xl md:text-[2.75rem]">
+        {isLive ? "Le live a commencé" : "Regardez le live en direct"}
+      </h1>
+      <p className="relative z-20 mx-auto mt-3 max-w-xl text-sm leading-relaxed text-white/85 drop-shadow-[0_1px_8px_rgba(0,0,0,0.9)] sm:text-[15px]">
+        Où que vous soyez — validez votre billet streaming avec le code ou le
+        numéro de la commande.
+      </p>
 
       {!isLive ? (
-        <div className="mb-5 rounded-2xl border border-amber-400/15 bg-amber-500/5 px-5 py-4 text-sm text-white/55 backdrop-blur">
-          <p className="font-[family-name:var(--font-anton)] text-lg uppercase text-amber-100">
-            Pas encore en direct
-          </p>
-          <p className="mt-1.5 text-sm text-white/50">
-            Vous pouvez déjà valider votre accès. Le live s’ouvrira dès le
-            démarrage officiel.
-          </p>
-        </div>
+        <p className="relative z-20 mt-1.5 text-[11px] text-amber-200/90">
+          Pas encore en direct — votre place sera prête dès l’ouverture.
+        </p>
       ) : null}
 
       <form
         onSubmit={handleSubmit}
-        className="relative z-20 rounded-2xl border border-amber-400/25 bg-black/80 p-5 shadow-[0_0_40px_-12px_rgba(251,191,36,0.35)] sm:p-6"
+        className="stream-nf-form relative z-20 mx-auto mt-8 w-full max-w-xl text-left"
       >
-        <p className="mb-4 text-[11px] uppercase tracking-[0.22em] text-amber-100/45">
-          Remplissez l&apos;un des deux champs
-        </p>
-
-        <label
-          htmlFor="stream-ticket-code"
-          className="mb-2 block text-[11px] uppercase tracking-[0.22em] text-amber-100/40"
-        >
-          Code billet streaming
-        </label>
         <div className="relative">
-          <Ticket className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-200/35" />
           <input
             id="stream-ticket-code"
             name="ticketCode"
@@ -481,78 +453,103 @@ export function StreamingGate({ initialStatus = null }: StreamingGateProps) {
               );
               setError(null);
             }}
-            placeholder="XXXXXXXXXXXX"
+            placeholder=" "
             autoComplete="one-time-code"
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
             inputMode="text"
             enterKeyHint="go"
-            className="w-full rounded-xl border border-amber-400/15 bg-black/40 py-3.5 pl-10 pr-4 font-mono text-sm tracking-[0.14em] text-white outline-none transition focus:border-amber-400/50"
+            aria-invalid={Boolean(error)}
+            className={cn(
+              "peer stream-nf-input h-[58px] w-full rounded-[4px] border bg-black/75 px-4 pb-2 pt-5 font-mono text-base tracking-[0.12em] text-white outline-none transition",
+              error && !phoneFilled
+                ? "border-[#e87c03] focus:border-[#e87c03]"
+                : "border-white/55 focus:border-white",
+            )}
           />
+          <label
+            htmlFor="stream-ticket-code"
+            className={cn(
+              "pointer-events-none absolute left-4 text-white/60 transition-all",
+              codeFilled
+                ? "top-1.5 text-[11px]"
+                : "top-1/2 -translate-y-1/2 text-base peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[11px]",
+            )}
+          >
+            Code billet streaming
+          </label>
         </div>
 
-        <div className="my-5 flex items-center gap-3">
-          <div className="h-px flex-1 bg-amber-400/15" />
-          <span className="text-[10px] uppercase tracking-[0.28em] text-amber-100/40">
+        <div className="my-4 flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/25" />
+          <span className="text-xs uppercase tracking-[0.2em] text-white/50">
             ou
           </span>
-          <div className="h-px flex-1 bg-amber-400/15" />
+          <div className="h-px flex-1 bg-white/25" />
         </div>
 
-        <label
-          htmlFor="stream-phone"
-          className="mb-2 block text-[11px] uppercase tracking-[0.22em] text-amber-100/40"
+        <div
+          id="stream-phone"
+          className={cn(
+            "stream-nf-phone rounded-[4px] border bg-black/75 px-3 py-1 transition",
+            error && phoneFilled
+              ? "border-[#e87c03]"
+              : "border-white/55 focus-within:border-white",
+          )}
         >
-          Téléphone de contact
-        </label>
-        <div id="stream-phone" className="relative z-20">
+          <p className="mb-0.5 px-1 pt-1.5 text-[11px] text-white/55">
+            Téléphone de la commande
+          </p>
           <TelInput
             value={phone}
             onChange={(value) => {
               setPhone(value);
               setError(null);
             }}
-            placeholder="Téléphone associé à la commande"
+            placeholder=" "
             required={false}
           />
         </div>
-        <p className="mt-2 text-xs text-white/40">
-          Numéro saisi lors de l’achat du billet streaming.
-        </p>
-
-        {submitting ? (
-          <p className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-100">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Vérification de votre accès…
-          </p>
-        ) : null}
 
         {error ? (
           <p
             role="alert"
-            className="mt-4 rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-200"
+            className="mt-3 flex items-start gap-2 text-sm text-[#e87c03]"
           >
-            {error}
+            <CircleX className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
           </p>
         ) : null}
 
         <button
           type="submit"
           disabled={submitting}
-          className="mt-5 flex min-h-12 w-full touch-manipulation items-center justify-center gap-2 rounded-full bg-amber-400 px-6 py-4 font-[family-name:var(--font-anton)] text-sm uppercase tracking-widest text-black transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className="mt-5 flex min-h-[58px] w-full touch-manipulation items-center justify-center gap-2 rounded-[4px] bg-[#feac00] px-6 text-xl font-semibold text-black shadow-[0_8px_28px_rgba(254,172,0,0.5)] transition hover:bg-[#ffb820] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-6 w-6 animate-spin" />
           ) : (
-            <MonitorPlay className="h-4 w-4" />
+            <>
+              <span>
+                {isLive ? "Regarder le live" : "Valider mon accès"}
+              </span>
+              <ChevronRight className="h-7 w-7" strokeWidth={2.5} />
+            </>
           )}
-          {submitting
-            ? "Validation…"
-            : isLive
-              ? "Regarder le live"
-              : "Valider mon accès"}
         </button>
+
+        {submitting ? (
+          <p className="mt-4 flex items-center justify-center gap-2 text-sm text-white/70">
+            <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+            Vérification de votre accès…
+          </p>
+        ) : (
+          <p className="mt-3 text-center text-xs text-white/45">
+            2 appareils par billet — plusieurs billets sur le même numéro
+            cumulent les places.
+          </p>
+        )}
       </form>
     </div>
   );

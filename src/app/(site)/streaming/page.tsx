@@ -1,10 +1,8 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { EventPageBackground } from "@/components/event/EventPageBackground";
-import { SiteFooter } from "@/components/layout/SiteFooter";
-import { SiteHeader } from "@/components/layout/SiteHeader";
-import { StreamingGate } from "@/components/streaming/StreamingGate";
+import { StreamingExperience } from "@/components/streaming/StreamingExperience";
 import { getPublicStreamStatus } from "@/lib/streaming";
+import { getHeroVideoUrl } from "@/lib/r2-media";
 import { buildSiteMetadata } from "@/lib/site-metadata";
 
 export const dynamic = "force-dynamic";
@@ -17,26 +15,25 @@ export const metadata: Metadata = buildSiteMetadata({
 });
 
 export default async function StreamingPage() {
-  const initialStatus = await getPublicStreamStatus().catch(() => null);
+  const [initialStatus, heroVideoUrl] = await Promise.all([
+    getPublicStreamStatus().catch(() => null),
+    getHeroVideoUrl().catch(() => null),
+  ]);
 
   return (
     <main className="relative isolate min-h-dvh bg-[#050505] text-white">
-      <EventPageBackground src="/img/s1.jpg" alt="Guecho — streaming" />
-      <div className="relative z-10">
-        <SiteHeader />
-        <section className="mx-auto max-w-5xl px-4 pb-24 pt-28 sm:px-6 sm:pt-32">
-          <Suspense
-            fallback={
-              <p className="text-sm text-amber-100/70">
-                Chargement du streaming…
-              </p>
-            }
-          >
-            <StreamingGate initialStatus={initialStatus} />
-          </Suspense>
-        </section>
-        <SiteFooter bareBackground />
-      </div>
+      <Suspense
+        fallback={
+          <p className="px-6 pt-28 text-sm text-amber-100/70">
+            Chargement du streaming…
+          </p>
+        }
+      >
+        <StreamingExperience
+          initialStatus={initialStatus}
+          heroVideoUrl={heroVideoUrl}
+        />
+      </Suspense>
     </main>
   );
 }
